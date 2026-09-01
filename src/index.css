@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #0A0A0A;
+    color: #E0E0E0;
+  }
+  code, kbd, samp, pre {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Checkerboard pattern for transparent PNG / WebP */
+.bg-checkered {
+  background-color: #0d0d0d;
+  background-image: 
+    linear-gradient(45deg, #181818 25%, transparent 25%), 
+    linear-gradient(-45deg, #181818 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #181818 75%), 
+    linear-gradient(-45deg, transparent 75%, #181818 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+.bg-checkered-light {
+  background-color: #e5e5e5;
+  background-image: 
+    linear-gradient(45deg, #d4d4d4 25%, transparent 25%), 
+    linear-gradient(-45deg, #d4d4d4 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #d4d4d4 75%), 
+    linear-gradient(-45deg, transparent 75%, #d4d4d4 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+}
+
+/* Subtle dot grid pattern */
+.bg-dot-grid {
+  background-image: radial-gradient(#262626 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.bg-dot-grid-light {
+  background-image: radial-gradient(#d0d5dd 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Custom sleek dark scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2A2A;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #444444;
+}

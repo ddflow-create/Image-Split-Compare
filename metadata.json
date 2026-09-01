@@ -1,0 +1,8 @@
+{
+  "name": "SplitCompare",
+  "description": "A compact application for synchronous image comparison with an overlay slider, scaling, and Windows support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
