@@ -7,7 +7,8 @@ import {
   Image as ImageIcon, 
   Check, 
   Layers, 
-  Plus
+  Plus,
+  Film
 } from 'lucide-react';
 import { ImageItem, AppLanguage, AppTheme } from '../types';
 import { TRANSLATIONS } from '../utils/i18n';
@@ -150,12 +151,18 @@ export const VerticalHistorySidebar: React.FC<VerticalHistorySidebarProps> = ({
                   }`}
                 >
                   <div className={`relative w-full h-16 rounded overflow-hidden ${themeStyles.canvas} ${themeStyles.checkeredClass} flex items-center justify-center border ${themeStyles.border}`}>
-                    <img
-                      src={item.url}
-                      alt={item.name}
-                      className="w-full h-full object-contain pointer-events-none"
-                      loading="lazy"
-                    />
+                    {item.url ? (
+                      <img
+                        src={item.url}
+                        alt={item.name}
+                        className="w-full h-full object-contain pointer-events-none"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-zinc-500">
+                        <Film className="w-6 h-6 text-blue-400 opacity-60" />
+                      </div>
+                    )}
                     {isActive && (
                       <div className="absolute top-1 left-1 px-1 py-0.2 rounded bg-blue-600 text-white text-[8px] font-bold shadow flex items-center gap-0.5">
                         <Check className="w-2.5 h-2.5" />
@@ -343,12 +350,18 @@ export const VerticalHistorySidebar: React.FC<VerticalHistorySidebarProps> = ({
               >
                 {/* Large Thumbnail Image */}
                 <div className={`relative w-full h-24 rounded-lg overflow-hidden ${themeStyles.canvas} ${themeStyles.checkeredClass} flex items-center justify-center border ${themeStyles.border}`}>
-                  <img
-                    src={item.url}
-                    alt={item.name}
-                    className="w-full h-full object-contain pointer-events-none"
-                    loading="lazy"
-                  />
+                  {item.url ? (
+                    <img
+                      src={item.url}
+                      alt={item.name}
+                      className="w-full h-full object-contain pointer-events-none"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-zinc-500">
+                      <Film className="w-8 h-8 text-blue-400 opacity-60" />
+                    </div>
+                  )}
                   {isActive && (
                     <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[9px] font-bold shadow-md flex items-center gap-1">
                       <Check className="w-3 h-3" />

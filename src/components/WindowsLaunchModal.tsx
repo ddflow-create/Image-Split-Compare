@@ -136,6 +136,7 @@ export const WindowsLaunchModal: React.FC<WindowsLaunchModalProps> = ({
                     <h4 className="text-xs font-bold mb-2">Windows (.bat)</h4>
                     <pre className="text-[10px] font-mono text-blue-400 mb-2">start.bat</pre>
                     <pre className="text-[10px] font-mono opacity-80 whitespace-pre-wrap">@echo off
+:: Install dependencies and start local dev server
 npm install
 npm run dev</pre>
                   </div>
@@ -143,6 +144,7 @@ npm run dev</pre>
                     <h4 className="text-xs font-bold mb-2">macOS / Linux (.sh)</h4>
                     <pre className="text-[10px] font-mono text-emerald-400 mb-2">start.sh</pre>
                     <pre className="text-[10px] font-mono opacity-80 whitespace-pre-wrap">#!/bin/bash
+# Install dependencies and start local dev server
 npm install
 npm run dev</pre>
                   </div>

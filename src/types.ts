@@ -21,6 +21,8 @@ export type AlignmentPreset =
   | 'bottom' 
   | 'bottom-right';
 
+export type MediaType = 'image' | 'video';
+
 export interface ImageItem {
   id: string;
   name: string;
@@ -29,8 +31,24 @@ export interface ImageItem {
   height: number;
   aspectRatio: number; // width / height
   size?: number; // bytes
-  format: string; // 'JPEG' | 'PNG' | 'WebP' | etc.
+  format: string; // 'JPEG' | 'PNG' | 'WebP' | 'MP4' | 'WEBM' etc.
   timestamp: number;
+  mediaType?: MediaType;
+  duration?: number; // Duration in seconds for video files
+}
+
+export interface VideoPlaybackState {
+  isPlaying: boolean;
+  isLooping: boolean;
+  currentTime: number; // relative time (0 to shortestDuration)
+  playbackRate: number;
+  isMuted: boolean;
+  startOffset: number; // start offset for the longer video in seconds
+  durationA: number;
+  durationB: number;
+  shortestDuration: number;
+  longerSide: 'A' | 'B' | null;
+  maxOffset: number;
 }
 
 export interface TransformState {

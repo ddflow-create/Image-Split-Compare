@@ -15,11 +15,13 @@ import {
   Crosshair, 
   Upload
 } from 'lucide-react';
+import { VideoPlaybackBar } from './VideoPlaybackBar';
 
 interface ComparisonViewerProps {
   imageA: ImageItem | null;
   imageB: ImageItem | null;
   mode: CompareMode;
+  onSelectMode?: (mode: CompareMode) => void;
   alignment: AlignmentPreset;
   transform: TransformState;
   onUpdateTransform: (transform: TransformState | ((prev: TransformState) => TransformState)) => void;
@@ -52,6 +54,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
   imageA,
   imageB,
   mode,
+  onSelectMode,
   alignment,
   transform,
   onUpdateTransform,
@@ -96,6 +99,482 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
     imgBy: number;
   } | null>(null);
 
+  // Video Synchronization Refs & State
+  const videoRefA = useRef<HTMLVideoElement | null>(null);
+  const videoRefB = useRef<HTMLVideoElement | null>(null);
+
+  const isVideoA = Boolean(imageA && (imageA.mediaType === 'video' || ['MP4', 'WEBM', 'MOV', 'MKV', 'M4V', 'OGG'].includes(imageA.format.toUpperCase())));
+  const isVideoB = Boolean(imageB && (imageB.mediaType === 'video' || ['MP4', 'WEBM', 'MOV', 'MKV', 'M4V', 'OGG'].includes(imageB.format.toUpperCase())));
+  const hasVideo = isVideoA || isVideoB;
+  const hasDualVideo = isVideoA && isVideoB;
+
+  const [durationA, setDurationA] = useState<number>(imageA?.duration || 0);
+  const [durationB, setDurationB] = useState<number>(imageB?.duration || 0);
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isLooping, setIsLooping] = useState<boolean>(true); // Default looping ON per user request
+  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
+  const [playbackRate, setPlaybackRate] = useState<number>(1.0);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [activeAudioSide, setActiveAudioSide] = useState<'A' | 'B'>('A');
+  const [startOffset, setStartOffset] = useState<number>(0);
+
+  // Sync initial durations from image items
+  useEffect(() => {
+    if (imageA?.duration) setDurationA(imageA.duration);
+    if (imageB?.duration) setDurationB(imageB.duration);
+  }, [imageA, imageB]);
+
+  // Compute effective durations, shortest duration, and max start offset for the longer video
+  const effDurationA = durationA || imageA?.duration || 0;
+  const effDurationB = durationB || imageB?.duration || 0;
+
+  let shortestDuration = 1;
+  let longerSide: 'A' | 'B' | null = null;
+  let maxOffset = 0;
+
+  if (hasDualVideo) {
+    shortestDuration = Math.max(0.1, Math.min(effDurationA || 1, effDurationB || 1));
+    if (effDurationA > effDurationB + 0.05) {
+      longerSide = 'A';
+      maxOffset = Math.max(0, effDurationA - effDurationB);
+    } else if (effDurationB > effDurationA + 0.05) {
+      longerSide = 'B';
+      maxOffset = Math.max(0, effDurationB - effDurationA);
+    }
+  } else if (hasVideo) {
+    shortestDuration = Math.max(0.1, isVideoA ? (effDurationA || 1) : (effDurationB || 1));
+  }
+
+  // Ensure start offset is within [0, maxOffset]
+  useEffect(() => {
+    if (startOffset > maxOffset) {
+      setStartOffset(maxOffset);
+    }
+  }, [maxOffset, startOffset]);
+
+  // Refs for tracking active scrub, seek state, barrier sync, and frame rate filtering
+  const isScrubbingRef = useRef(false);
+  const wasPlayingBeforeScrubRef = useRef(false);
+  const pendingSeekTimeRef = useRef<number | null>(null);
+  const seekRafIdRef = useRef<number | null>(null);
+  const isPlayingRef = useRef(false);
+  const isBufferingWaitRef = useRef(false);
+  const lastHardSeekTimeRef = useRef(0);
+  const lastRateAdjustTimeRef = useRef(0);
+  const lastUiUpdateTimeRef = useRef(0);
+  const lastReportedTimeRef = useRef(0);
+
+  // Apply target times synchronously to both video elements without triggering redundant seeks
+  const applySyncedTimes = useCallback((clampedTime: number) => {
+    const targetA = (longerSide === 'A' ? startOffset : 0) + clampedTime;
+    const targetB = (longerSide === 'B' ? startOffset : 0) + clampedTime;
+
+    const vA = videoRefA.current;
+    const vB = videoRefB.current;
+
+    if (vA && isVideoA) {
+      if (Math.abs(vA.currentTime - targetA) > 0.001) {
+        vA.currentTime = targetA;
+      }
+    }
+    if (vB && isVideoB) {
+      if (Math.abs(vB.currentTime - targetB) > 0.001) {
+        vB.currentTime = targetB;
+      }
+    }
+  }, [longerSide, startOffset, isVideoA, isVideoB]);
+
+  // Toggle Synced Play / Pause with single-audio clock isolation
+  const handleTogglePlay = useCallback(() => {
+    if (isPlaying) {
+      videoRefA.current?.pause();
+      videoRefB.current?.pause();
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+      isBufferingWaitRef.current = false;
+    } else {
+      const t = videoCurrentTime >= shortestDuration - 0.05 ? 0 : videoCurrentTime;
+      const targetA = (longerSide === 'A' ? startOffset : 0) + t;
+      const targetB = (longerSide === 'B' ? startOffset : 0) + t;
+
+      if (videoRefA.current && isVideoA) {
+        videoRefA.current.currentTime = targetA;
+        videoRefA.current.playbackRate = playbackRate;
+        videoRefA.current.muted = isMuted || activeAudioSide !== 'A';
+        videoRefA.current.play().catch(() => {});
+      }
+      if (videoRefB.current && isVideoB) {
+        videoRefB.current.currentTime = targetB;
+        videoRefB.current.playbackRate = playbackRate;
+        videoRefB.current.muted = isMuted || activeAudioSide !== 'B';
+        videoRefB.current.play().catch(() => {});
+      }
+      setVideoCurrentTime(t);
+      lastReportedTimeRef.current = t;
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      isBufferingWaitRef.current = false;
+    }
+  }, [isPlaying, videoCurrentTime, shortestDuration, longerSide, startOffset, isVideoA, isVideoB, playbackRate, isMuted, activeAudioSide]);
+
+  // Barrier sync when one video hits a buffer stall or heavy decode hitch
+  const handleVideoWaiting = useCallback(() => {
+    if (!isPlayingRef.current) return;
+    isBufferingWaitRef.current = true;
+    // Briefly hold playback so videos with different bitrates/resolutions don't run away from each other
+    videoRefA.current?.pause();
+    videoRefB.current?.pause();
+  }, []);
+
+  // Resume barrier sync when both decoders have sufficient future frames buffered
+  const handleVideoCanPlay = useCallback(() => {
+    if (isBufferingWaitRef.current && isPlayingRef.current) {
+      const vA = videoRefA.current;
+      const vB = videoRefB.current;
+      const readyA = !vA || vA.readyState >= 3;
+      const readyB = !vB || vB.readyState >= 3;
+      if (readyA && readyB) {
+        isBufferingWaitRef.current = false;
+        vA?.play().catch(() => {});
+        vB?.play().catch(() => {});
+      }
+    }
+  }, []);
+
+  // Seeking start (user touches or clicks scrubber)
+  const handleSeekStart = useCallback(() => {
+    isScrubbingRef.current = true;
+    wasPlayingBeforeScrubRef.current = isPlaying;
+    if (isPlaying) {
+      videoRefA.current?.pause();
+      videoRefB.current?.pause();
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+    }
+  }, [isPlaying]);
+
+  // Continuous seek across synced timeline (throttled on rAF to prevent decoder queue desync)
+  const handleSeek = useCallback((time: number) => {
+    const clamped = Math.max(0, Math.min(shortestDuration, time));
+    setVideoCurrentTime(clamped);
+    lastReportedTimeRef.current = clamped;
+    pendingSeekTimeRef.current = clamped;
+
+    if (seekRafIdRef.current === null) {
+      seekRafIdRef.current = requestAnimationFrame(() => {
+        seekRafIdRef.current = null;
+        if (pendingSeekTimeRef.current !== null) {
+          applySyncedTimes(pendingSeekTimeRef.current);
+        }
+      });
+    }
+  }, [shortestDuration, applySyncedTimes]);
+
+  // Seek end (user releases scrubber thumb)
+  const handleSeekEnd = useCallback((time?: number) => {
+    if (seekRafIdRef.current !== null) {
+      cancelAnimationFrame(seekRafIdRef.current);
+      seekRafIdRef.current = null;
+    }
+    const target = time !== undefined ? Math.max(0, Math.min(shortestDuration, time)) : (pendingSeekTimeRef.current ?? videoCurrentTime);
+    setVideoCurrentTime(target);
+    lastReportedTimeRef.current = target;
+    applySyncedTimes(target);
+
+    const finishSeekLock = () => {
+      isScrubbingRef.current = false;
+      pendingSeekTimeRef.current = null;
+
+      // Ensure both videos are identically aligned
+      const finalA = (longerSide === 'A' ? startOffset : 0) + target;
+      const finalB = (longerSide === 'B' ? startOffset : 0) + target;
+      if (videoRefA.current && isVideoA) {
+        videoRefA.current.currentTime = finalA;
+        videoRefA.current.playbackRate = playbackRate;
+      }
+      if (videoRefB.current && isVideoB) {
+        videoRefB.current.currentTime = finalB;
+        videoRefB.current.playbackRate = playbackRate;
+      }
+
+      if (wasPlayingBeforeScrubRef.current) {
+        wasPlayingBeforeScrubRef.current = false;
+        if (videoRefA.current && isVideoA) {
+          videoRefA.current.play().catch(() => {});
+        }
+        if (videoRefB.current && isVideoB) {
+          videoRefB.current.play().catch(() => {});
+        }
+        setIsPlaying(true);
+        isPlayingRef.current = true;
+      }
+    };
+
+    let pendingCount = 0;
+    const onDone = () => {
+      pendingCount--;
+      if (pendingCount <= 0) finishSeekLock();
+    };
+
+    if (videoRefA.current && isVideoA && videoRefA.current.seeking) {
+      pendingCount++;
+      videoRefA.current.addEventListener('seeked', onDone, { once: true });
+    }
+    if (videoRefB.current && isVideoB && videoRefB.current.seeking) {
+      pendingCount++;
+      videoRefB.current.addEventListener('seeked', onDone, { once: true });
+    }
+
+    if (pendingCount === 0) {
+      finishSeekLock();
+    } else {
+      setTimeout(() => {
+        if (isScrubbingRef.current) finishSeekLock();
+      }, 100);
+    }
+  }, [shortestDuration, applySyncedTimes, longerSide, startOffset, isVideoA, isVideoB, playbackRate, videoCurrentTime]);
+
+  // Offset change for longer video with precision sync
+  const handleChangeStartOffset = useCallback((offset: number) => {
+    const clamped = Math.max(0, Math.min(maxOffset, offset));
+    setStartOffset(clamped);
+    const targetA = (longerSide === 'A' ? clamped : 0) + videoCurrentTime;
+    const targetB = (longerSide === 'B' ? clamped : 0) + videoCurrentTime;
+    if (videoRefA.current && isVideoA) {
+      videoRefA.current.currentTime = targetA;
+    }
+    if (videoRefB.current && isVideoB) {
+      videoRefB.current.currentTime = targetB;
+    }
+  }, [maxOffset, longerSide, videoCurrentTime, isVideoA, isVideoB]);
+
+  // Frame step (-1 / +1 frame, exact 30 FPS step = 1/30s ≈ 0.03333s)
+  const handleStepFrame = useCallback((direction: 'prev' | 'next') => {
+    const frameDelta = 1 / 30;
+    const delta = direction === 'next' ? frameDelta : -frameDelta;
+    if (isPlaying) {
+      videoRefA.current?.pause();
+      videoRefB.current?.pause();
+      setIsPlaying(false);
+      isPlayingRef.current = false;
+    }
+    const nextTime = Math.max(0, Math.min(shortestDuration, videoCurrentTime + delta));
+    setVideoCurrentTime(nextTime);
+    lastReportedTimeRef.current = nextTime;
+    applySyncedTimes(nextTime);
+  }, [isPlaying, shortestDuration, videoCurrentTime, applySyncedTimes]);
+
+  // Mute toggle
+  const handleToggleMute = useCallback(() => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      if (videoRefA.current) videoRefA.current.muted = next || activeAudioSide !== 'A';
+      if (videoRefB.current) videoRefB.current.muted = next || activeAudioSide !== 'B';
+      return next;
+    });
+  }, [activeAudioSide]);
+
+  // Audio Channel selector (Slot A vs Slot B) - avoids dual audio clock contention
+  const handleToggleAudioSide = useCallback(() => {
+    setActiveAudioSide((prev) => {
+      const next = prev === 'A' ? 'B' : 'A';
+      if (videoRefA.current) videoRefA.current.muted = isMuted || next !== 'A';
+      if (videoRefB.current) videoRefB.current.muted = isMuted || next !== 'B';
+      return next;
+    });
+  }, [isMuted]);
+
+  // Playback rate change
+  const handleChangePlaybackRate = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    if (videoRefA.current) videoRefA.current.playbackRate = rate;
+    if (videoRefB.current) videoRefB.current.playbackRate = rate;
+  }, []);
+
+  // Animation Frame Loop for Tight Video Synchronization, Sub-Frame Drift Compensation & Shortest-Video Looping
+  // High-performance Phase-Locked Loop (PLL) designed for videos with different compression and resolutions
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    if (!isPlaying) {
+      if (videoRefA.current && isVideoA) videoRefA.current.playbackRate = playbackRate;
+      if (videoRefB.current && isVideoB) videoRefB.current.playbackRate = playbackRate;
+      return;
+    }
+
+    let animationFrameId: number;
+
+    const loop = () => {
+      // If user is scrubbing, buffering, or either video is seeking, don't interfere
+      if (isScrubbingRef.current || isBufferingWaitRef.current || videoRefA.current?.seeking || videoRefB.current?.seeking) {
+        animationFrameId = requestAnimationFrame(loop);
+        return;
+      }
+
+      const master = (longerSide === 'A' ? videoRefB.current : videoRefA.current) || videoRefA.current || videoRefB.current;
+      const slave = longerSide === 'A' ? videoRefA.current : videoRefB.current;
+
+      if (master) {
+        const curMasterTime = master.currentTime;
+        if (curMasterTime >= shortestDuration - 0.03 || master.ended) {
+          if (isLooping) {
+            // Auto-loop seamlessly on the shortest duration boundary
+            const resetA = longerSide === 'A' ? startOffset : 0;
+            const resetB = longerSide === 'B' ? startOffset : 0;
+            if (videoRefA.current) {
+              videoRefA.current.currentTime = resetA;
+              videoRefA.current.playbackRate = playbackRate;
+              if (videoRefA.current.paused) videoRefA.current.play().catch(() => {});
+            }
+            if (videoRefB.current) {
+              videoRefB.current.currentTime = resetB;
+              videoRefB.current.playbackRate = playbackRate;
+              if (videoRefB.current.paused) videoRefB.current.play().catch(() => {});
+            }
+            setVideoCurrentTime(0);
+            lastReportedTimeRef.current = 0;
+          } else {
+            videoRefA.current?.pause();
+            videoRefB.current?.pause();
+            setIsPlaying(false);
+            isPlayingRef.current = false;
+            setVideoCurrentTime(shortestDuration);
+            return;
+          }
+        } else {
+          const relTime = Math.max(0, Math.min(shortestDuration, curMasterTime));
+          
+          // Throttled UI state updates (~12 FPS / 80ms) to preserve CPU/GPU headroom for video decoders
+          const now = performance.now();
+          if (now - lastUiUpdateTimeRef.current >= 80 || Math.abs(relTime - lastReportedTimeRef.current) >= 0.08) {
+            lastUiUpdateTimeRef.current = now;
+            lastReportedTimeRef.current = relTime;
+            setVideoCurrentTime(relTime);
+          }
+
+          // Anti-lag Adaptive Rate Regulation for videos with different compression / resolutions
+          if (slave && hasDualVideo && !slave.seeking && !master.seeking) {
+            const expectedSlaveTime = (longerSide === (master === videoRefB.current ? 'A' : 'B') ? startOffset : 0) + relTime;
+            const drift = slave.currentTime - expectedSlaveTime;
+            const absDrift = Math.abs(drift);
+
+            if (absDrift > 0.40) {
+              // Drift exceeds ~400ms: hard re-align ONLY with a 1.5s cooldown to prevent infinite seek stutter loops
+              if (now - lastHardSeekTimeRef.current > 1500) {
+                slave.currentTime = expectedSlaveTime;
+                lastHardSeekTimeRef.current = now;
+              }
+            } else if (absDrift <= 0.020) {
+              // Locked within sub-frame deadband (20ms): ensure nominal rate
+              if (slave.playbackRate !== playbackRate) {
+                slave.playbackRate = playbackRate;
+              }
+              if (master.playbackRate !== playbackRate) {
+                master.playbackRate = playbackRate;
+              }
+            } else {
+              // Smooth, continuous phase-lock adjustment without resetting hardware decoder!
+              if (now - lastRateAdjustTimeRef.current >= 120) {
+                lastRateAdjustTimeRef.current = now;
+
+                if (drift < 0) {
+                  // Slave is behind: accelerate slave slightly, ease master if slave is struggling
+                  const slaveBoost = Math.min(0.12, absDrift * 0.8);
+                  const masterEase = absDrift > 0.06 ? Math.min(0.06, absDrift * 0.4) : 0;
+                  slave.playbackRate = Number((playbackRate * (1 + slaveBoost)).toFixed(3));
+                  master.playbackRate = Number((playbackRate * (1 - masterEase)).toFixed(3));
+                } else {
+                  // Slave is ahead: slow slave down
+                  const slaveSlow = Math.min(0.12, drift * 0.8);
+                  slave.playbackRate = Number((playbackRate * (1 - slaveSlow)).toFixed(3));
+                  master.playbackRate = playbackRate;
+                }
+              }
+            }
+
+            if (slave.paused && isPlaying) {
+              slave.play().catch(() => {});
+            }
+          }
+        }
+      }
+
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    animationFrameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPlaying, isLooping, shortestDuration, longerSide, startOffset, hasDualVideo, isVideoA, isVideoB, playbackRate]);
+
+  // Immediate repaint of video elements when toggling pixelatedZoom
+  useEffect(() => {
+    const applyVideoFilter = (video: HTMLVideoElement | null) => {
+      if (!video) return;
+      const filter = pixelatedZoom ? 'pixelated' : 'auto';
+      video.style.imageRendering = filter;
+      // @ts-ignore
+      video.style.webkitImageRendering = filter;
+
+      // If video is paused, Chrome/WebKit caches the decoded video texture in GPU memory.
+      // Re-touching currentTime forces the GPU compositor to immediately re-render with the new filter!
+      if (video.paused && !video.seeking) {
+        try {
+          const t = video.currentTime;
+          video.currentTime = t;
+        } catch (e) {}
+      }
+    };
+
+    applyVideoFilter(videoRefA.current);
+    applyVideoFilter(videoRefB.current);
+  }, [pixelatedZoom]);
+
+  // Unified Media Element Renderer (Images and Videos)
+  const renderMedia = (item: ImageItem, side: 'A' | 'B', extraClass = '') => {
+    if (!item || !item.url) return null;
+    const isItemVideo = item.mediaType === 'video' || ['MP4', 'WEBM', 'MOV', 'MKV', 'M4V', 'OGG'].includes(item.format.toUpperCase());
+    
+    const mediaStyle: React.CSSProperties = {
+      imageRendering: pixelatedZoom ? 'pixelated' : 'auto',
+    };
+
+    if (isItemVideo) {
+      return (
+        <video
+          ref={side === 'A' ? videoRefA : videoRefB}
+          src={item.url}
+          playsInline
+          preload="auto"
+          // @ts-ignore
+          disablePictureInPicture
+          // @ts-ignore
+          disableRemotePlayback
+          muted={isMuted || (activeAudioSide !== side)}
+          onLoadedMetadata={(e) => {
+            const dur = e.currentTarget.duration;
+            if (dur && !isNaN(dur)) {
+              if (side === 'A') setDurationA(dur);
+              else setDurationB(dur);
+            }
+          }}
+          onWaiting={handleVideoWaiting}
+          onCanPlay={handleVideoCanPlay}
+          className={`w-full h-full object-contain block ${extraClass}`}
+          style={mediaStyle}
+          draggable={false}
+        />
+      );
+    }
+    return (
+      <img
+        src={item.url}
+        alt={item.name}
+        className={`w-full h-full object-contain block ${extraClass}`}
+        style={mediaStyle}
+        draggable={false}
+      />
+    );
+  };
+
   const t = TRANSLATIONS[language];
   const themeStyles = THEMES[theme];
 
@@ -116,25 +595,59 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  // Track spacebar for quick peep/pan
+  // Track spacebar and video playback shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat && (e.target as HTMLElement).tagName !== 'INPUT') {
-        setSpacePressed(true);
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (e.code === 'Space' && !e.repeat) {
+        if (hasVideo) {
+          e.preventDefault();
+          handleTogglePlay();
+        } else {
+          setSpacePressed(true);
+        }
+      }
+
+      if (hasVideo && !e.repeat) {
+        if (e.code === 'KeyK') {
+          e.preventDefault();
+          handleTogglePlay();
+        } else if (e.code === 'Comma') {
+          e.preventDefault();
+          handleStepFrame('prev');
+        } else if (e.code === 'Period') {
+          e.preventDefault();
+          handleStepFrame('next');
+        } else if (e.code === 'KeyJ' || e.code === 'ArrowLeft') {
+          if (!e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            handleSeek(videoCurrentTime - 1);
+          }
+        } else if (e.code === 'KeyL' || e.code === 'ArrowRight') {
+          if (!e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            handleSeek(videoCurrentTime + 1);
+          }
+        }
       }
     };
+
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         setSpacePressed(false);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [hasVideo, handleTogglePlay, handleStepFrame, handleSeek, videoCurrentTime]);
 
   // Compute base fitted geometry for Image A and Image B
   const boundsA = imageA ? calculateFitBounds(imageA.width, imageA.height, containerSize.width, containerSize.height, alignment) : { baseX: 0, baseY: 0, fittedWidth: 0, fittedHeight: 0 };
@@ -397,7 +910,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
   const transformStyle: React.CSSProperties = {
     transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
     transformOrigin: '0 0',
-    imageRendering: pixelatedZoom && transform.scale > 1.5 ? 'pixelated' : 'auto',
+    imageRendering: pixelatedZoom ? 'pixelated' : 'auto',
   };
 
   return (
@@ -448,12 +961,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsA.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageA.url}
-                      alt={imageA.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageA, 'A')}
                   </div>
                 </div>
               </div>
@@ -477,12 +985,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsB.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageB.url}
-                      alt={imageB.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageB, 'B')}
                   </div>
                 </div>
               </div>
@@ -547,12 +1050,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsA.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageA.url}
-                      alt={imageA.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageA, 'A')}
                   </div>
                 </div>
               </div>
@@ -576,12 +1074,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsB.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageB.url}
-                      alt={imageB.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageB, 'B')}
                   </div>
                 </div>
               </div>
@@ -630,12 +1123,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsA.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageA.url}
-                      alt={imageA.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageA, 'A')}
                   </div>
                 </div>
               )}
@@ -657,12 +1145,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsB.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageB.url}
-                      alt={imageB.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageB, 'B')}
                   </div>
                 </div>
               )}
@@ -688,12 +1171,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsA.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageA.url}
-                      alt={imageA.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageA, 'A')}
                   </div>
                 </div>
               )}
@@ -714,12 +1192,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                       height: boundsB.fittedHeight,
                     }}
                   >
-                    <img
-                      src={imageB.url}
-                      alt={imageB.name}
-                      className="w-full h-full object-contain block"
-                      draggable={false}
-                    />
+                    {renderMedia(imageB, 'B')}
                   </div>
                 </div>
               )}
@@ -740,12 +1213,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   height: boundsA.fittedHeight,
                 }}
               >
-                <img
-                  src={imageA.url}
-                  alt={imageA.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageA, 'A')}
               </div>
             )}
 
@@ -761,12 +1229,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   filter: diffInvert ? 'invert(1)' : `contrast(${1 + diffThreshold / 20}) brightness(${1 + diffThreshold / 30})`,
                 }}
               >
-                <img
-                  src={imageB.url}
-                  alt={imageB.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageB, 'B', diffInvert ? 'invert' : '')}
               </div>
             )}
           </div>
@@ -786,12 +1249,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   height: boundsA.fittedHeight,
                 }}
               >
-                <img
-                  src={imageA.url}
-                  alt={imageA.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageA, 'A')}
               </div>
             )}
 
@@ -807,12 +1265,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   opacity: onionOpacity / 100,
                 }}
               >
-                <img
-                  src={imageB.url}
-                  alt={imageB.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageB, 'B')}
               </div>
             )}
           </div>
@@ -834,12 +1287,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   transition: smoothBlink ? `opacity ${Math.floor((1000 / toggleSpeedHz) * 0.8)}ms ease-in-out` : 'none',
                 }}
               >
-                <img
-                  src={imageA.url}
-                  alt={imageA.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageA, 'A')}
               </div>
             )}
 
@@ -856,12 +1304,7 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
                   transition: smoothBlink ? `opacity ${Math.floor((1000 / toggleSpeedHz) * 0.8)}ms ease-in-out` : 'none',
                 }}
               >
-                <img
-                  src={imageB.url}
-                  alt={imageB.name}
-                  className="w-full h-full object-contain block"
-                  draggable={false}
-                />
+                {renderMedia(imageB, 'B')}
               </div>
             )}
           </div>
@@ -890,6 +1333,38 @@ export const ComparisonViewer: React.FC<ComparisonViewerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Video Playback Bar for Synchronized Video Comparison */}
+      {hasVideo && (
+        <VideoPlaybackBar
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          currentTime={videoCurrentTime}
+          shortestDuration={shortestDuration}
+          onSeekStart={handleSeekStart}
+          onSeek={handleSeek}
+          onSeekEnd={handleSeekEnd}
+          isLooping={isLooping}
+          onToggleLoop={() => setIsLooping((prev) => !prev)}
+          playbackRate={playbackRate}
+          onChangePlaybackRate={handleChangePlaybackRate}
+          isMuted={isMuted}
+          onToggleMute={handleToggleMute}
+          activeAudioSide={activeAudioSide}
+          onToggleAudioSide={handleToggleAudioSide}
+          onStepFrame={handleStepFrame}
+          durationA={effDurationA}
+          durationB={effDurationB}
+          longerSide={longerSide}
+          maxOffset={maxOffset}
+          startOffset={startOffset}
+          onChangeStartOffset={handleChangeStartOffset}
+          mode={mode}
+          onSelectMode={onSelectMode || (() => {})}
+          language={language}
+          theme={theme}
+        />
+      )}
 
       {/* Themed Bottom Status Bar */}
       <footer className={`h-8 ${themeStyles.statusBg} border-t ${themeStyles.border} flex items-center justify-between px-4 shrink-0 z-30 select-none text-xs`}>

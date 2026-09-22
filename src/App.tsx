@@ -9,6 +9,7 @@ import {
 } from './types';
 import { SAMPLE_PAIRS, SamplePair } from './data/sampleImages';
 import { processImageFile } from './utils/imageUtils';
+import { getSampleVideoPair } from './utils/videoSampleUtils';
 import { THEMES } from './utils/theme';
 import { Header } from './components/Header';
 import { ViewportToolbar } from './components/ViewportToolbar';
@@ -315,7 +316,22 @@ export default function App() {
   };
 
   // Load sample preset pair
-  const handleSelectSample = (sample: SamplePair) => {
+  const handleSelectSample = async (sample: SamplePair) => {
+    if (sample.id === 'video-sync-compare' || sample.imageA.mediaType === 'video') {
+      try {
+        const { videoA, videoB } = await getSampleVideoPair();
+        setImageA(videoA);
+        setImageB(videoB);
+        setHistoryA((prev) => [videoA, ...prev.filter((i) => i.id !== videoA.id)].slice(0, 15));
+        setHistoryB((prev) => [videoB, ...prev.filter((i) => i.id !== videoB.id)].slice(0, 15));
+        setMode('side-by-side');
+        handleResetZoom();
+        return;
+      } catch (err) {
+        console.error('Error generating sample videos:', err);
+      }
+    }
+
     setImageA(sample.imageA);
     setImageB(sample.imageB);
     setHistoryA((prev) => {
@@ -634,6 +650,7 @@ export default function App() {
               onUploadA={handleUploadA}
               onUploadB={handleUploadB}
               showInspector={showInspector}
+              onSelectMode={setMode}
               language={language}
               theme={theme}
             />
@@ -733,6 +750,7 @@ export default function App() {
             onUploadA={handleUploadA}
             onUploadB={handleUploadB}
             showInspector={showInspector}
+            onSelectMode={setMode}
             language={language}
             theme={theme}
           />

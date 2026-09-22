@@ -1,6 +1,6 @@
 {
   "name": "SplitCompare",
-  "description": "A compact application for synchronous image comparison with an overlay slider, scaling, and Windows support.",
+  "description": "Professional tool for synchronous side-by-side image and video comparison with split sliders, auto-looping, scaling, and pixel inspection.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

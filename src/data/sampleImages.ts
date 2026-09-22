@@ -9,6 +9,19 @@ export interface SamplePair {
   imageB: ImageItem;
 }
 
+// Generate realistic SVG poster for video samples
+const createVideoPosterSvg = (title: string, durationStr: string, color: string): string => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+    <rect width="1280" height="720" fill="#090e17"/>
+    <circle cx="640" cy="360" r="220" fill="${color}" opacity="0.12"/>
+    <circle cx="640" cy="360" r="70" fill="${color}" opacity="0.8"/>
+    <polygon points="625,325 625,395 675,360" fill="#ffffff"/>
+    <text x="640" y="490" font-family="sans-serif" font-size="34" font-weight="bold" fill="#ffffff" text-anchor="middle">${title}</text>
+    <text x="640" y="535" font-family="monospace" font-size="22" fill="#94a3b8" text-anchor="middle">Duration: ${durationStr} • MP4 / WebM</text>
+  </svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 // Generate sample SVGs with realistic details (Landscape, City, Pixel Art, Texture)
 const createSampleSvg = (
   type: 'photo-raw' | 'photo-retouch' | 'upscale-low' | 'upscale-high' | 'game-night' | 'game-day',
@@ -190,6 +203,37 @@ export const SAMPLE_PAIRS: SamplePair[] = [
       size: 3420000,
       format: 'PNG',
       timestamp: Date.now() - 60000,
+    },
+  },
+  {
+    id: 'video-sync-compare',
+    title: 'Video: Sync Compare (5s vs 10s)',
+    description: 'Synchronous side-by-side video playback with auto-looping to shortest (5s) and start offset for longer video.',
+    imageA: {
+      id: 'sample-vid-a',
+      name: 'Render_SourceA_5s.mp4',
+      url: createVideoPosterSvg('Render Source A (5.0s)', '5.00s', '#3b82f6'),
+      width: 1280,
+      height: 720,
+      aspectRatio: 1280 / 720,
+      size: 350000,
+      format: 'MP4',
+      mediaType: 'video',
+      duration: 5.0,
+      timestamp: Date.now() - 30000,
+    },
+    imageB: {
+      id: 'sample-vid-b',
+      name: 'Render_SourceB_10s.mp4',
+      url: createVideoPosterSvg('Render Source B (10.0s)', '10.00s', '#8b5cf6'),
+      width: 1280,
+      height: 720,
+      aspectRatio: 1280 / 720,
+      size: 720000,
+      format: 'MP4',
+      mediaType: 'video',
+      duration: 10.0,
+      timestamp: Date.now() - 10000,
     },
   },
 ];

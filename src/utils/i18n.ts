@@ -149,6 +149,30 @@ export interface Translations {
     chooseSlotB: string;
     orDragDrop: string;
   };
+  video: {
+    play: string;
+    pause: string;
+    loop: string;
+    loopOn: string;
+    loopOff: string;
+    speed: string;
+    mute: string;
+    unmute: string;
+    stepPrev: string;
+    stepNext: string;
+    shortestLoop: string;
+    startOffset: string;
+    offsetDesc: string;
+    resetOffset: string;
+    maxOffset: string;
+    sideBySide: string;
+    audioSource: string;
+    audioSlotA: string;
+    audioSlotB: string;
+    audioMuted: string;
+    syncLocked: string;
+    syncAdjusting: string;
+  };
 }
 
 export const TRANSLATIONS: Record<AppLanguage, Translations> = {
@@ -327,10 +351,34 @@ export const TRANSLATIONS: Record<AppLanguage, Translations> = {
     },
     emptyState: {
       title: 'Перетащите изображения для сравнения',
-      description: 'Поддерживаются форматы JPEG, PNG и WebP любого разрешения с поддержкой альфа-прозрачности.',
+      description: 'Поддерживаются форматы JPEG, PNG, WebP и видео MP4, WebM любого разрешения.',
       chooseSlotA: 'Выбрать для Слота A',
       chooseSlotB: 'Выбрать для Слота B',
       orDragDrop: 'Или выберите пару из меню «Примеры» сверху',
+    },
+    video: {
+      play: 'Синхронный запуск',
+      pause: 'Пауза',
+      loop: 'Зацикливание',
+      loopOn: 'Зацикливание ВКЛ (по умолчанию)',
+      loopOff: 'Зацикливание ВЫКЛ',
+      speed: 'Скорость',
+      mute: 'Выключить звук',
+      unmute: 'Включить звук',
+      stepPrev: 'Кадр назад (,)',
+      stepNext: 'Кадр вперед (.)',
+      shortestLoop: 'Цикл по короткому ролику',
+      startOffset: 'Смещение старта длинного',
+      offsetDesc: 'Смещение начального времени длинного видео с сохранением длины короткого',
+      resetOffset: 'Сбросить смещение',
+      maxOffset: 'Макс. смещение',
+      sideBySide: 'Бок-о-бок',
+      audioSource: 'Звук',
+      audioSlotA: 'Звук: Слот A',
+      audioSlotB: 'Звук: Слот B',
+      audioMuted: 'Звук выключен',
+      syncLocked: 'Синхронизировано',
+      syncAdjusting: 'Авто-подгонка скорости',
     },
   },
 
@@ -508,11 +556,35 @@ export const TRANSLATIONS: Record<AppLanguage, Translations> = {
       imageCoords: 'Pixels',
     },
     emptyState: {
-      title: 'Drop images here to start comparing',
-      description: 'Supports high-res JPEG, PNG and WebP formats with full alpha transparency support.',
+      title: 'Drop images or videos here to start comparing',
+      description: 'Supports high-res JPEG, PNG, WebP, and MP4/WebM videos with synchronous playback.',
       chooseSlotA: 'Select for Slot A',
       chooseSlotB: 'Select for Slot B',
       orDragDrop: 'Or choose a sample pair from the top menu',
+    },
+    video: {
+      play: 'Synchronous Play',
+      pause: 'Pause',
+      loop: 'Loop',
+      loopOn: 'Looping ON (Default)',
+      loopOff: 'Looping OFF',
+      speed: 'Speed',
+      mute: 'Mute Audio',
+      unmute: 'Unmute Audio',
+      stepPrev: 'Frame backward (,)',
+      stepNext: 'Frame forward (.)',
+      shortestLoop: 'Loop by shortest video',
+      startOffset: 'Longer video start offset',
+      offsetDesc: 'Shift the starting point of the longer video while maintaining the shortest duration loop',
+      resetOffset: 'Reset offset',
+      maxOffset: 'Max offset',
+      sideBySide: 'Side-by-Side',
+      audioSource: 'Audio',
+      audioSlotA: 'Audio: Slot A',
+      audioSlotB: 'Audio: Slot B',
+      audioMuted: 'Audio Muted',
+      syncLocked: 'Synced',
+      syncAdjusting: 'Auto-rate Syncing',
     },
   },
 };

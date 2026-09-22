@@ -57,6 +57,14 @@ export const HotkeysModal: React.FC<HotkeysModalProps> = ({
         { keys: ['Esc'], desc: t.hotkeys.escKey },
       ],
     },
+    {
+      category: language === 'ru' ? 'Воспроизведение видео' : 'Video Playback',
+      items: [
+        { keys: ['Space / K'], desc: language === 'ru' ? 'Синхронный пуск / пауза' : 'Synchronous Play / Pause' },
+        { keys: [',', '.'], desc: language === 'ru' ? 'Предыдущий / следующий кадр' : 'Previous / Next Frame' },
+        { keys: ['J / L', '← / →'], desc: language === 'ru' ? 'Перемотка назад / вперед (1с)' : 'Seek backward / forward (1s)' },
+      ],
+    },
   ];
 
   return (

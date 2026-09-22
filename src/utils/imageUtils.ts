@@ -12,16 +12,51 @@ export function formatBytes(bytes?: number): string {
 }
 
 /**
- * Read a File object and convert it to ImageItem
+ * Read a File object and convert it to ImageItem (handles both images and videos)
  */
 export async function processImageFile(file: File): Promise<ImageItem> {
+  // Check if file is a video
+  const isVideo = file.type.startsWith('video/') || Boolean(file.name.match(/\.(mp4|webm|mov|mkv|m4v|ogg)$/i));
+
+  if (isVideo) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.src = url;
+
+      video.onloadedmetadata = () => {
+        const ext = file.name.split('.').pop()?.toUpperCase() || 'MP4';
+        const width = video.videoWidth || 1920;
+        const height = video.videoHeight || 1080;
+        resolve({
+          id: `vid_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          name: file.name,
+          url,
+          width,
+          height,
+          aspectRatio: width / height,
+          size: file.size,
+          format: ext,
+          timestamp: Date.now(),
+          mediaType: 'video',
+          duration: video.duration || 0,
+        });
+      };
+
+      video.onerror = () => {
+        reject(new Error('Не удалось декодировать видео файл. Поддерживаются MP4, WebM, MOV.'));
+      };
+    });
+  }
+
   return new Promise((resolve, reject) => {
     // Check supported formats: JPEG, PNG, WebP, GIF, AVIF, SVG
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
     if (!validTypes.includes(file.type) && !file.name.match(/\.(jpe?g|png|webp|gif|avif|svg)$/i)) {
       // Still try to read if image/*
       if (!file.type.startsWith('image/')) {
-        return reject(new Error('Неподдерживаемый формат файла. Поддерживаются JPEG, PNG, WebP.'));
+        return reject(new Error('Неподдерживаемый формат файла. Поддерживаются JPEG, PNG, WebP, MP4, WebM.'));
       }
     }
 
@@ -42,6 +77,7 @@ export async function processImageFile(file: File): Promise<ImageItem> {
           size: file.size,
           format,
           timestamp: Date.now(),
+          mediaType: 'image',
         });
       };
       img.onerror = () => {
